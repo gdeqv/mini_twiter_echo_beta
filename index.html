@@ -6,6 +6,7 @@
 <title>Echo</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 body { background:#121212; color:#fff; font-family:sans-serif; margin:0; padding:0; }
 header { padding:15px; background:#1a1a1a; text-align:center; font-size:1.5em; font-weight:bold; }
@@ -29,11 +30,12 @@ header { padding:15px; background:#1a1a1a; text-align:center; font-size:1.5em; f
 <div id="auth-buttons">
     <button onclick="signIn()">Войти через Google</button>
     <button onclick="signOut()">Выйти</button>
+    <button onclick="changeNickname()">Изменить ник</button>
 </div>
 
 <div id="nickname-modal">
     <div>
-        <h3>Введите ваш ник</h3>
+        <h3>Введите ваш ник (только латиница и цифры)</h3>
         <input type="text" id="nickname-input" placeholder="Ваш ник" style="padding:5px; margin-top:10px;"/>
         <button onclick="saveNickname()" style="margin-top:10px; padding:5px 10px;">Сохранить</button>
     </div>
@@ -58,8 +60,8 @@ const firebaseConfig = {
     measurementId: "G-XQ49S7VDS1"
 };
 firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 let currentUser = null;
-let postsData = [];
 
 // --- Auth state ---
 firebase.auth().onAuthStateChanged(user => {
@@ -70,7 +72,7 @@ firebase.auth().onAuthStateChanged(user => {
     renderPosts();
 });
 
-// --- Sign in via redirect ---
+// --- Sign in via Google ---
 function signIn(){
     const provider = new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithRedirect(provider);
@@ -92,10 +94,17 @@ function signOut(){
     firebase.auth().signOut().then(()=>{ currentUser=null; renderPosts(); });
 }
 
+// --- Change nickname manually ---
+function changeNickname(){
+    if(!currentUser) return alert('Сначала войдите!');
+    document.getElementById('nickname-modal').style.display='flex';
+}
+
 // --- Save nickname ---
 function saveNickname(){
     const nick = document.getElementById('nickname-input').value.trim();
     if(!nick) return alert('Введите ник!');
+    if(!/^[a-zA-Z0-9]+$/.test(nick)) return alert('Только латиница и цифры!');
     currentUser.updateProfile({displayName:nick}).then(()=>{
         document.getElementById('nickname-modal').style.display='none';
         renderPosts();
@@ -107,72 +116,85 @@ function addPost(){
     if(!currentUser) return alert('Сначала войдите!');
     const text = document.getElementById('new-post-input').value.trim();
     if(!text) return;
-    postsData.unshift({
-        id: postsData.length+1,
+    const postData = {
         author: '@'+currentUser.displayName,
         text,
         likes:0,
         reposts:0,
-        comments:[]
+        comments:[],
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    db.collection('posts').add(postData).then(()=>{
+        document.getElementById('new-post-input').value='';
+        renderPosts();
     });
-    document.getElementById('new-post-input').value='';
-    renderPosts();
 }
 
 // --- Render posts ---
 function renderPosts(){
     const container = document.getElementById('posts-tab');
     container.innerHTML='';
-    postsData.forEach(post=>{
-        const div = document.createElement('div');
-        div.className='post';
-        div.innerHTML=`
-            <h4>${post.author}</h4>
-            <p>${post.text}</p>
-            <button onclick="likePost(${post.id})">❤ ${post.likes}</button>
-            <button onclick="showComments(${post.id})">💬 ${post.comments.length}</button>
-            <button onclick="repostPost(${post.id})">🔁 ${post.reposts}</button>
-            <div id="comments-${post.id}"></div>
-        `;
-        container.appendChild(div);
+    db.collection('posts').orderBy('timestamp','desc').get().then(snapshot=>{
+        snapshot.forEach(doc=>{
+            const post = {id:doc.id, ...doc.data()};
+            const div = document.createElement('div');
+            div.className='post';
+            div.innerHTML=`
+                <h4>${post.author}</h4>
+                <p>${post.text}</p>
+                <button onclick="likePost('${post.id}')">❤ ${post.likes}</button>
+                <button onclick="showComments('${post.id}')">💬 ${post.comments.length}</button>
+                <button onclick="repostPost('${post.id}')">🔁 ${post.reposts}</button>
+                <div id="comments-${post.id}"></div>
+            `;
+            container.appendChild(div);
+        });
     });
 }
 
 // --- Like, repost, comment ---
-function likePost(id){ 
-    if(!currentUser){ alert('Сначала войдите!'); return; } 
-    postsData.find(p=>p.id===id).likes++; 
-    renderPosts(); 
+function likePost(id){
+    if(!currentUser){ alert('Сначала войдите!'); return; }
+    const postRef = db.collection('posts').doc(id);
+    postRef.update({likes: firebase.firestore.FieldValue.increment(1)}).then(renderPosts);
 }
 
-function repostPost(id){ 
-    if(!currentUser){ alert('Сначала войдите!'); return; } 
-    postsData.find(p=>p.id===id).reposts++; 
-    renderPosts(); 
+function repostPost(id){
+    if(!currentUser){ alert('Сначала войдите!'); return; }
+    const postRef = db.collection('posts').doc(id);
+    postRef.update({reposts: firebase.firestore.FieldValue.increment(1)}).then(renderPosts);
 }
 
 function showComments(id){
-    const post = postsData.find(p=>p.id===id);
     const div = document.getElementById(`comments-${id}`);
     if(div.style.display==='block'){ div.style.display='none'; return; }
     div.style.display='block';
-    div.innerHTML=`<input type="text" id="comment-input-${id}" placeholder="Комментарий"/><button onclick="addComment(${id})">Отправить</button>`;
-    post.comments.forEach(c=>{
-        const cdiv = document.createElement('div');
-        cdiv.textContent=`${c.author}: ${c.text}`;
-        div.appendChild(cdiv);
+    const inputHTML = `<input type="text" id="comment-input-${id}" placeholder="Комментарий"/>
+                       <button onclick="addComment('${id}')">Отправить</button>`;
+    div.innerHTML = inputHTML;
+
+    db.collection('posts').doc(id).get().then(doc=>{
+        const post = doc.data();
+        post.comments.forEach(c=>{
+            const cdiv = document.createElement('div');
+            cdiv.textContent=`${c.author}: ${c.text}`;
+            div.appendChild(cdiv);
+        });
     });
 }
 
-function addComment(id){ 
+function addComment(id){
     if(!currentUser){ alert('Сначала войдите!'); return; }
-    const post = postsData.find(p=>p.id===id);
     const input = document.getElementById(`comment-input-${id}`);
     const text = input.value.trim();
     if(!text) return;
-    post.comments.push({author:'@'+currentUser.displayName, text});
-    input.value='';
-    showComments(id);
+    const comment = {author:'@'+currentUser.displayName, text};
+    db.collection('posts').doc(id).update({
+        comments: firebase.firestore.FieldValue.arrayUnion(comment)
+    }).then(()=>{
+        input.value='';
+        showComments(id);
+    });
 }
 </script>
 </body>
