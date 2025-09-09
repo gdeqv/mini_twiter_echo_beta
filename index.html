@@ -1,0 +1,251 @@
+<!doctype html>
+
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Echo — Demo</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#94a3b8;--accent:#1d9bf0;--glass:rgba(255,255,255,0.03)}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color:#e6eef8;background:linear-gradient(180deg,#071024 0%, #071a2a 100%);min-height:100vh}
+    .app{max-width:900px;margin:28px auto;padding:18px}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    .logo{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#1d9bf0,#7c5cff);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    h1{margin:0;font-size:20px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,0.6);}.tabs{display:flex;gap:12px;margin-bottom:14px}
+.tab{cursor:pointer;padding:6px 12px;border-radius:8px;background:var(--glass);color:var(--muted)}
+.tab.active{background:var(--accent);color:white}
+
+.posts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.post{padding:12px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);cursor:pointer;border:1px solid rgba(255,255,255,0.03);}
+.post:hover{transform:translateY(-3px);transition:transform .15s}
+.post .meta{display:flex;gap:8px;align-items:center}
+.avatar{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#ffb86b,#ff6b6b);display:flex;align-items:center;justify-content:center;color:#081226;font-weight:700}
+.name{font-weight:600}
+.handle{color:var(--muted);font-size:13px}
+.text{margin-top:10px;line-height:1.45}
+.actions{display:flex;gap:16px;margin-top:12px;color:var(--muted);font-size:14px;align-items:center}
+.action-btn{cursor:pointer;user-select:none}
+.action-btn.liked{color:#f87171}
+.action-btn.reposted{color:#4ade80}
+
+.back{display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;color:var(--muted);cursor:pointer}
+.comments{margin-top:14px}
+.comment{padding:10px;border-radius:10px;background:var(--glass);margin-bottom:8px;border:1px solid rgba(255,255,255,0.02)}
+.compose{display:flex;gap:8px;margin-top:10px}
+.compose textarea{flex:1;min-height:70px;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+.btn{background:var(--accent);color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+
+footer{margin-top:22px;color:var(--muted);font-size:13px;text-align:center}
+
+@media (max-width:480px){.posts{grid-template-columns:1fr}}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="logo">e</div>
+      <div>
+        <h1>Echo (демо)</h1>
+        <div style="color:var(--muted);font-size:13px">Кликните на пост — откроется страница вида <em>your-domain.com/1</em></div>
+      </div>
+    </header><main id="main" class="card"></main>
+
+<footer>Примеры постов — локальные данные. Источник: demo.</footer>
+
+  </div>  <script>
+    const POSTS = [
+      {id:1, name:'Алексей Иванов', handle:'alex_ivan', text:'Привет! Это тестовый пост. Нажми, чтобы увидеть комментарии.', avatar:'АИ', likes:0, reposts:0, liked:false, reposted:false},
+      {id:2, name:'Мария Петрова', handle:'maria_p', text:'Второй пост — с небольшой заметкой о фронтенде. SPA + History API.', avatar:'МП', likes:0, reposts:0, liked:false, reposted:false},
+      {id:3, name:'OpenAI Fan', handle:'gpt_fan', text:'Echo работает локально и показывает комментарии при клике.', avatar:'OF', likes:0, reposts:0, liked:false, reposted:false},
+    ];
+
+    const COMMENTS = {
+      1: [
+        {id:1, name:'Друг', handle:'friend', text:'Круто!'},
+        {id:2, name:'Юзер', handle:'user123', text:'Можно добавить лайки?'},
+      ],
+      2: [
+        {id:1, name:'Dev', handle:'dev', text:'Используй pushState() и popstate для навигации.'}
+      ],
+      3: []
+    };
+
+    let currentTab = 'feed';
+
+    const main = document.getElementById('main');
+
+    function formatPostCard(post){
+      return `
+        <div class="post" data-id="${post.id}" role="button" tabindex="0">
+          <div class="meta">
+            <div class="avatar">${post.avatar}</div>
+            <div>
+              <div class="name">${escapeHtml(post.name)}</div>
+              <div class="handle">@${escapeHtml(post.handle)}</div>
+            </div>
+          </div>
+          <div class="text">${escapeHtml(post.text)}</div>
+          <div class="actions">
+            <span>💬 ${COMMENTS[post.id]?.length || 0}</span>
+            <span class="action-btn ${post.reposted?'reposted':''}" data-action="repost" data-id="${post.id}">🔁 ${post.reposts}</span>
+            <span class="action-btn ${post.liked?'liked':''}" data-action="like" data-id="${post.id}">❤️ ${post.likes}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTabs(){
+      return `
+        <div class="tabs">
+          <div class="tab ${currentTab==='feed'?'active':''}" data-tab="feed">Лента</div>
+          <div class="tab ${currentTab==='reposts'?'active':''}" data-tab="reposts">Репосты</div>
+        </div>
+      `;
+    }
+
+    function renderList(){
+      document.title = 'Echo — Лента';
+      const postsToShow = currentTab==='feed' ? POSTS : POSTS.filter(p=>p.reposted);
+      main.innerHTML = `
+        ${renderTabs()}
+        <div class="posts">
+          ${postsToShow.map(p => formatPostCard(p)).join('')}
+        </div>
+      `;
+
+      main.querySelectorAll('.post').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if(e.target.closest('.action-btn')) return;
+          openPost(Number(el.dataset.id));
+        });
+        el.addEventListener('keydown', (e)=>{ if(e.key==='Enter') openPost(Number(el.dataset.id)); });
+      });
+
+      main.querySelectorAll('.action-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleAction(btn.dataset.action, Number(btn.dataset.id)));
+      });
+
+      main.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', ()=>{
+          currentTab = tab.dataset.tab;
+          renderList();
+        });
+      });
+    }
+
+    function renderPost(id){
+      const post = POSTS.find(p=>p.id===id);
+      if(!post){
+        main.innerHTML = '<div>Пост не найден</div>';
+        return;
+      }
+      document.title = `Post #${id} — Echo`;
+      const comments = COMMENTS[id] || [];
+      main.innerHTML = `
+        <div class="back" id="backBtn">← Назад</div>
+        <div class="post" style="cursor:default">
+          <div class="meta">
+            <div class="avatar">${post.avatar}</div>
+            <div>
+              <div class="name">${escapeHtml(post.name)}</div>
+              <div class="handle">@${escapeHtml(post.handle)}</div>
+            </div>
+          </div>
+          <div class="text">${escapeHtml(post.text)}</div>
+          <div class="actions">
+            <span>💬 ${comments.length}</span>
+            <span class="action-btn ${post.reposted?'reposted':''}" data-action="repost" data-id="${post.id}">🔁 ${post.reposts}</span>
+            <span class="action-btn ${post.liked?'liked':''}" data-action="like" data-id="${post.id}">❤️ ${post.likes}</span>
+          </div>
+        </div>
+
+        <div class="comments">
+          <h3>Комментарии</h3>
+          <div id="commentsList">
+            ${comments.map(c=>`<div class="comment"><strong>${escapeHtml(c.name)}</strong> <span class="handle">@${escapeHtml(c.handle)}</span><div>${escapeHtml(c.text)}</div></div>`).join('')}
+            ${comments.length===0?'<div style="color:var(--muted)">Пока нет комментариев — будь первым!</div>':''}
+          </div>
+
+          <div class="compose">
+            <textarea id="newComment" placeholder="Написать комментарий..."></textarea><div style="display:flex;flex-direction:column;gap:8px"><button class="btn" id="sendComment">Отправить</button></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').addEventListener('click', ()=>{
+    navigateToList();
+  });
+
+  document.getElementById('sendComment').addEventListener('click', ()=>{
+    const ta = document.getElementById('newComment');
+    const text = ta.value.trim();
+    if(!text) return;
+    const list = COMMENTS[id] = COMMENTS[id] || [];
+    list.push({id:Date.now(), name:'Гость', handle:'you', text});
+    ta.value='';
+    renderPost(id);
+  });
+
+  main.querySelectorAll('.action-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleAction(btn.dataset.action, Number(btn.dataset.id)));
+  });
+}
+
+function handleAction(action, id){
+  const post = POSTS.find(p=>p.id===id);
+  if(!post) return;
+  if(action==='like'){
+    post.liked = !post.liked;
+    post.likes += post.liked ? 1 : -1;
+  } else if(action==='repost'){
+    post.reposted = !post.reposted;
+    post.reposts += post.reposted ? 1 : -1;
+  }
+  if(location.pathname==='/' || location.pathname==='/reposts') renderList(); else renderPost(id);
+}
+
+function openPost(id){
+  history.pushState({page:'post', id}, '', '/' + id);
+  renderPost(id);
+}
+function navigateToList(){
+  history.pushState({page:'list'}, '', '/');
+  renderList();
+}
+
+window.addEventListener('popstate', (e)=>{
+  const state = e.state;
+  if(state){
+    if(state.page==='post') renderPost(state.id);
+    else renderList();
+  } else {
+    handleLocationPath(location.pathname);
+  }
+});
+
+function handleLocationPath(path){
+  const m = path.match(/^\/(\d+)$/);
+  if(m){
+    const id = Number(m[1]);
+    history.replaceState({page:'post', id}, '', '/' + id);
+    renderPost(id);
+  } else {
+    history.replaceState({page:'list'}, '', '/');
+    renderList();
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":"&#39;"}[c];
+  });
+}
+
+handleLocationPath(location.pathname);
+
+  </script>
+</body>
+  </html>
