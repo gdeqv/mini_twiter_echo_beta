@@ -1,36 +1,68 @@
-<body style="background:#121212; color:#fff; font-family:sans-serif; margin:0; padding:0;">
-<!-- Шапка с кнопками авторизации -->
-<div id="auth-buttons" style="padding:10px; display:flex; gap:10px; background:#1a1a1a;">
-    <button onclick="signInWithGoogle()" style="padding:5px 10px;">Войти через Google</button>
-    <button onclick="signOut()" style="padding:5px 10px;">Выйти</button>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echo</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<style>
+body { background:#121212; color:#fff; font-family:sans-serif; margin:0; padding:0; }
+header { padding:15px; background:#1a1a1a; text-align:center; font-size:1.5em; font-weight:bold; }
+#auth-buttons { padding:10px; display:flex; gap:10px; justify-content:center; background:#1a1a1a; }
+#nickname-modal {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.8); justify-content:center; align-items:center;
+}
+#nickname-modal > div { background:#222; padding:20px; border-radius:10px; text-align:center; }
+.new-post { margin:10px; display:flex; gap:5px; justify-content:center; }
+.new-post input { flex:1; padding:5px; }
+.new-post button { padding:5px 10px; }
+.post { background:#1e1e1e; margin:10px auto; padding:10px; border-radius:8px; width:90%; max-width:600px; }
+.post button { margin-right:5px; }
+</style>
+</head>
+<body>
+
+<header>Echo</header>
+
+<div id="auth-buttons">
+    <button onclick="signIn()">Войти через Google</button>
+    <button onclick="signOut()">Выйти</button>
 </div>
 
-<!-- Модальное окно для ввода ника -->
-<div id="nickname-modal" style="
-    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,0.8); justify-content:center; align-items:center;">
-    <div style="background:#222; padding:20px; border-radius:10px; text-align:center;">
+<div id="nickname-modal">
+    <div>
         <h3>Введите ваш ник</h3>
         <input type="text" id="nickname-input" placeholder="Ваш ник" style="padding:5px; margin-top:10px;"/>
         <button onclick="saveNickname()" style="margin-top:10px; padding:5px 10px;">Сохранить</button>
     </div>
 </div>
 
-<!-- Новый пост -->
-<div id="new-post-container" style="margin:10px;">
-    <input type="text" id="new-post-input" placeholder="Что у вас нового?" style="width:70%; padding:5px;"/>
-    <button onclick="addPost()" style="padding:5px 10px;">Опубликовать</button>
+<div class="new-post">
+    <input type="text" id="new-post-input" placeholder="Что у вас нового?"/>
+    <button onclick="addPost()">Опубликовать</button>
 </div>
 
-<!-- Лента постов -->
-<div id="posts-tab" style="margin:10px;"></div>
+<div id="posts-tab"></div>
 
 <script>
-let postsData = [];
+// --- Firebase config ---
+const firebaseConfig = {
+    apiKey: "AIzaSyDYNBFXBRNg68Z3u_T4JTa-kRqorWKtZek",
+    authDomain: "echo-beta-edb51.firebaseapp.com",
+    projectId: "echo-beta-edb51",
+    storageBucket: "echo-beta-edb51.firebasestorage.app",
+    messagingSenderId: "18552431523",
+    appId: "1:18552431523:web:7541c2d8f549dcb55cf016",
+    measurementId: "G-XQ49S7VDS1"
+};
+firebase.initializeApp(firebaseConfig);
 let currentUser = null;
+let postsData = [];
 
-// Firebase авторизация
-auth.onAuthStateChanged(user => {
+// --- Auth state ---
+firebase.auth().onAuthStateChanged(user => {
     currentUser = user;
     if(user && !user.displayName){
         document.getElementById('nickname-modal').style.display='flex';
@@ -38,27 +70,30 @@ auth.onAuthStateChanged(user => {
     renderPosts();
 });
 
-function signInWithGoogle() {
+// --- Sign in via redirect ---
+function signIn(){
     const provider = new firebase.auth.GoogleAuthProvider();
-    firebase.auth().signInWithPopup(provider)
-    .then(result => {
+    firebase.auth().signInWithRedirect(provider);
+}
+
+// --- Handle redirect result ---
+firebase.auth().getRedirectResult().then(result => {
+    if(result.user){
         currentUser = result.user;
         if(!currentUser.displayName){
             document.getElementById('nickname-modal').style.display='flex';
         }
         renderPosts();
-    })
-    .catch(err => alert(err.message));
+    }
+}).catch(err => console.log(err));
+
+// --- Sign out ---
+function signOut(){
+    firebase.auth().signOut().then(()=>{ currentUser=null; renderPosts(); });
 }
 
-function signOut() {
-    firebase.auth().signOut().then(()=>{
-        currentUser = null;
-        renderPosts();
-    });
-}
-
-function saveNickname() {
+// --- Save nickname ---
+function saveNickname(){
     const nick = document.getElementById('nickname-input').value.trim();
     if(!nick) return alert('Введите ник!');
     currentUser.updateProfile({displayName:nick}).then(()=>{
@@ -67,33 +102,30 @@ function saveNickname() {
     });
 }
 
-function addPost() {
+// --- Add post ---
+function addPost(){
     if(!currentUser) return alert('Сначала войдите!');
-    const input = document.getElementById('new-post-input');
-    const text = input.value.trim();
+    const text = document.getElementById('new-post-input').value.trim();
     if(!text) return;
-    const newPost = {
-        id: postsData.length + 1,
-        author: '@' + currentUser.displayName,
+    postsData.unshift({
+        id: postsData.length+1,
+        author: '@'+currentUser.displayName,
         text,
         likes:0,
         reposts:0,
         comments:[]
-    };
-    postsData.unshift(newPost);
-    input.value='';
+    });
+    document.getElementById('new-post-input').value='';
     renderPosts();
 }
 
-function renderPosts() {
+// --- Render posts ---
+function renderPosts(){
     const container = document.getElementById('posts-tab');
     container.innerHTML='';
     postsData.forEach(post=>{
         const div = document.createElement('div');
-        div.style.background='#1e1e1e';
-        div.style.margin='10px 0';
-        div.style.padding='10px';
-        div.style.borderRadius='8px';
+        div.className='post';
         div.innerHTML=`
             <h4>${post.author}</h4>
             <p>${post.text}</p>
@@ -106,18 +138,17 @@ function renderPosts() {
     });
 }
 
-function likePost(id){
-    if(!currentUser) return alert('Сначала войдите!');
-    const post = postsData.find(p=>p.id===id);
-    post.likes++;
-    renderPosts();
+// --- Like, repost, comment ---
+function likePost(id){ 
+    if(!currentUser){ alert('Сначала войдите!'); return; } 
+    postsData.find(p=>p.id===id).likes++; 
+    renderPosts(); 
 }
 
-function repostPost(id){
-    if(!currentUser) return alert('Сначала войдите!');
-    const post = postsData.find(p=>p.id===id);
-    post.reposts++;
-    renderPosts();
+function repostPost(id){ 
+    if(!currentUser){ alert('Сначала войдите!'); return; } 
+    postsData.find(p=>p.id===id).reposts++; 
+    renderPosts(); 
 }
 
 function showComments(id){
@@ -125,16 +156,16 @@ function showComments(id){
     const div = document.getElementById(`comments-${id}`);
     if(div.style.display==='block'){ div.style.display='none'; return; }
     div.style.display='block';
-    div.innerHTML = `<input type="text" id="comment-input-${id}" placeholder="Комментарий"/><button onclick="addComment(${id})">Отправить</button>`;
+    div.innerHTML=`<input type="text" id="comment-input-${id}" placeholder="Комментарий"/><button onclick="addComment(${id})">Отправить</button>`;
     post.comments.forEach(c=>{
         const cdiv = document.createElement('div');
-        cdiv.textContent = `${c.author}: ${c.text}`;
+        cdiv.textContent=`${c.author}: ${c.text}`;
         div.appendChild(cdiv);
     });
 }
 
-function addComment(id){
-    if(!currentUser) return alert('Сначала войдите!');
+function addComment(id){ 
+    if(!currentUser){ alert('Сначала войдите!'); return; }
     const post = postsData.find(p=>p.id===id);
     const input = document.getElementById(`comment-input-${id}`);
     const text = input.value.trim();
@@ -145,3 +176,4 @@ function addComment(id){
 }
 </script>
 </body>
+</html>
