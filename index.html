@@ -84,9 +84,6 @@ input { width:100%; padding:10px; margin:10px 0; border-radius:5px; border:none;
 <div class="container" id="login-container">
     <h2>Вход в Echo</h2>
     <button onclick="googleLogin()" style="background:#4285F4; color:#fff;">Войти через Google</button>
-    <input type="email" id="email" placeholder="Email">
-    <input type="password" id="password" placeholder="Пароль">
-    <button onclick="emailLogin()" style="background:#0f0; color:#000;">Войти через Email</button>
     <div id="error"></div>
 </div>
 
@@ -138,12 +135,6 @@ function googleLogin() {
     auth.signInWithPopup(provider).catch(err => {
         document.getElementById('error').textContent = err.message;
     });
-}
-function emailLogin() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    auth.signInWithEmailAndPassword(email, password)
-    .catch(err => { document.getElementById('error').textContent = err.message; });
 }
 
 auth.onAuthStateChanged(user => {
@@ -210,7 +201,7 @@ function renderPosts() {
         div.className = 'post';
         div.innerHTML = `<h4>${post.author}</h4><p>${post.text}</p>
         <button onclick="likePost(${post.id}, 'posts')">❤ ${post.likes}</button>
-        <button onclick="showComments(${post.id}, 'posts')">💬 ${post.comments.length}</button>
+        <button onclick="showComments(${post.id})">💬 ${post.comments.length}</button>
         <button onclick="repostPost(${post.id})">🔁 ${post.reposts}</button>
         <div class="comments" id="comments-${post.id}"></div>`;
         container.appendChild(div);
@@ -244,12 +235,22 @@ function repostPost(id) {
     renderReposts();
 }
 
-function showComments(id, type) {
-    let data = (type==='posts') ? postsData : repostsData;
-    let post = data.find(p=>p.id===id);
+function showComments(id) {
+    if(!auth.currentUser) { alert('Сначала войдите!'); return; }
+    const post = postsData.find(p=>p.id===id);
     const commentsDiv = document.getElementById(`comments-${id}`);
+    if(commentsDiv.querySelector('input')) return; // не создавать дважды
     const commentInput = document.createElement('input');
     commentInput.placeholder = 'Написать комментарий';
     commentInput.style.width='100%';
     commentInput.onkeypress = function(e){
-        if(e.key==='Enter'){
+        if(e.key==='Enter' && commentInput.value.trim()!==''){
+            post.comments.push({author:auth.currentUser.displayName,text:commentInput.value});
+            renderPosts();
+        }
+    }
+    commentsDiv.appendChild(commentInput);
+}
+</script>
+</body>
+</html>
